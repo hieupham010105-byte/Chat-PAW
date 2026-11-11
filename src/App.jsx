@@ -2706,31 +2706,60 @@ export default function App() {
     setRecording(false);
   };
 
-  const normalizeSpeech = value => String(value || "").toLocaleLowerCase()
-    .normalize("NFD").replace(/[\\u0300-\\u036f]/g, "")
-    .replace(/[’']/g, "").replace(/[^\\p{L}\\p{N}\\s]/gu, " ")
-    .replace(/\\s+/g, " ").trim();
+  // Chuẩn hóa transcript: bỏ chữ hoa/thường, dấu câu và khoảng trắng thừa.
+  // Giữ nguyên chữ Hán để không làm sai nội dung tiếng Trung.
+  const normalizeSpeech = value => String(value || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase()
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  // Chinese speech matching: Han characters are not separated by spaces.
+  // Khoảng cách chỉnh sửa Levenshtein: cho phép sai khác rất nhỏ do nhận diện giọng nói.
+  const speechEditSimilarity = (left, right) => {
+    const a = Array.from(left);
+    const b = Array.from(right);
+    if (!a.length || !b.length) return 0;
+
+    let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
+    for (let i = 1; i <= a.length; i++) {
+      const current = [i];
+      for (let j = 1; j <= b.length; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        current[j] = Math.min(
+          current[j - 1] + 1,
+          previous[j] + 1,
+          previous[j - 1] + cost
+        );
+      }
+      previous = current;
+    }
+
+    return 1 - previous[b.length] / Math.max(a.length, b.length);
+  };
+
   const checkSpeechMatch = (spoken, expected) => {
-    const a = normalizeSpeech(spoken), b = normalizeSpeech(expected);
+    const a = normalizeSpeech(spoken);
+    const b = normalizeSpeech(expected);
     if (!a || !b) return false;
     if (a === b) return true;
 
     if (language === "zh") {
-      const compactA = a.replace(/\\s/g, "");
-      const compactB = b.replace(/\\s/g, "");
-      if (!compactA || !compactB) return false;
-      if (compactA.includes(compactB) || compactB.includes(compactA)) return true;
-      const expectedChars = Array.from(compactB);
-      const spokenChars = new Set(Array.from(compactA));
-      const matched = expectedChars.filter(char => spokenChars.has(char)).length;
-      return matched / Math.max(expectedChars.length, 1) >= 0.72;
+      const compactA = a.replace(/\s/g, "");
+      const compactB = b.replace(/\s/g, "");
+      return speechEditSimilarity(compactA, compactB) >= 0.82;
     }
 
-    const aw = new Set(a.split(" "));
-    const bw = b.split(" ");
-    return bw.filter(word => aw.has(word)).length / Math.max(bw.length, 1) >= 0.72;
+    // So sánh theo từng từ để không đánh trượt chỉ vì dấu câu hoặc một lỗi nhận diện nhỏ.
+    const spokenWords = a.split(" ");
+    const expectedWords = b.split(" ");
+    const wordSimilarity = speechEditSimilarity(spokenWords.join("|"), expectedWords.join("|"));
+
+    // Câu ngắn cần độ chính xác cao hơn; câu dài được phép có một sai khác nhỏ.
+    const threshold = expectedWords.length <= 4 ? 0.9 : 0.82;
+    return wordSimilarity >= threshold;
   };
 
   const startAudio = () => {
