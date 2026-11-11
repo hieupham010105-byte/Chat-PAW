@@ -28,7 +28,7 @@ app.use(express.json({ limit: "1mb" }));
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 // ==========================================
 // HEALTH CHECK
