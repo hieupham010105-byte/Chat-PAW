@@ -1,0 +1,12 @@
+
+node_modules/
+dist/
+
+# Environment variables - keep secrets private
+.env
+.env.*
+!.env.example
+server/.env
+
+# Logs
+*.log
